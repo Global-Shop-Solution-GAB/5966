@@ -1,0 +1,601 @@
+﻿Program.Sub.ScreenSU.Start
+Gui.fmMain..Create
+Gui.fmMain..Caption("Payroll CSV Export")
+Gui.fmMain..Size(6330,1890)
+Gui.fmMain..MinX(0)
+Gui.fmMain..MinY(0)
+Gui.fmMain..Position(0,0)
+Gui.fmMain..BackColor(-2147483633)
+Gui.fmMain..MousePointer(0)
+Gui.fmMain..Event(UnLoad,fmMain_UnLoad)
+Gui.fmMain.dtpPayDate.Create(DatePicker)
+Gui.fmMain.dtpPayDate.Size(1935,285)
+Gui.fmMain.dtpPayDate.Position(2190,375)
+Gui.fmMain.cmdGenCSV.Create(Button)
+Gui.fmMain.cmdGenCSV.Size(1545,375)
+Gui.fmMain.cmdGenCSV.Position(2400,780)
+Gui.fmMain.cmdGenCSV.Caption("Generate CSV")
+Gui.fmMain.cmdGenCSV.FontStyle(True,False,False,False,False)
+Gui.fmMain.cmdGenCSV.Event(Click,Data)
+Gui.fmMain.lblPayDate.Create(Label,"   Pay Date - CSV will be generated for the 14 days preceding this date.",True,6330,255,0,0,150,True,0,"Arial",8,-2147483633,0)
+Gui.fmMain.lblPayDate.FontStyle(True,False,False,False,False)
+Gui.fmMain.lblMsg.Create(Label,"Label",False,6060,255,0,15,885,True,2,"Arial",8,-2147483633,0)
+Gui.fmMain.lblMsg.FontStyle(True,False,False,False,False)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.Try
+
+Gui.fmMain..Show
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.CallSub(Error,"SubRoutine",V.Ambient.CurrentSubroutine,"eNumber",V.Ambient.ErrorNumber,"eDESCRiption",V.Ambient.ErrorDESCRiption)
+F.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.Data.Start
+F.Intrinsic.Control.Try
+V.Local.sSQL.Declare
+V.Local.iCnt.Declare
+V.Local.iCnt2.Declare
+V.Local.iDaily.Declare
+V.Local.dWk1Strt.Declare
+V.Local.dWk1End.Declare
+V.Local.dWk2Strt.Declare
+V.Local.dWk2End.Declare
+V.Local.sFilter.Declare
+V.Local.sFilterOut.Declare
+V.Local.sFilterDaily.Declare
+V.Local.fSumHrsWrked.Declare
+V.Local.fSumHrsWrkedOT.Declare
+
+Gui.fmMain.cmdGenCSV.Visible(False)
+Gui.fmMain.lblMsg.Caption("Please wait - gathering data")
+Gui.fmMain.dtpPayDate.Enabled(False)
+Gui.fmMain.lblMsg.Visible(True)
+
+V.Local.dWk2End.Set(V.Screen.fmMain!dtpPayDate.Value)
+F.Intrinsic.Date.DateAdd(D,-6,V.Local.dWk2End,V.Local.dWk2Strt)
+F.Intrinsic.Date.DateAdd(D,-13,V.Local.dWk2End,V.Local.dWk1Strt)
+F.Intrinsic.Date.DateAdd(D,6,V.Local.dWk1Strt,V.Local.dWk1End)
+
+F.Intrinsic.Control.If(V.DataTable.dtWeekTots.Exists)
+	F.Data.DataTable.Close("dtWeekTots")
+F.Intrinsic.Control.EndIf
+
+F.Data.DataTable.Create("dtWeekTots",True)
+F.Data.DataTable.AddColumn("dtWeekTots","EMPLOYEE","String")
+F.Data.DataTable.AddColumn("dtWeekTots","NAME","String")
+F.Data.DataTable.AddColumn("dtWeekTots","DEPT","String")
+F.Data.DataTable.AddColumn("dtWeekTots","WEEK","String")
+F.Data.DataTable.AddColumn("dtWeekTots","EC01","Float",0)
+F.Data.DataTable.AddColumn("dtWeekTots","EC02","Float",0)
+F.Data.DataTable.AddColumn("dtWeekTots","EC03","Float",0)
+F.Data.DataTable.AddColumn("dtWeekTots","EC04","Float",0)
+F.Data.DataTable.AddColumn("dtWeekTots","EC05","Float",0)
+F.Data.DataTable.AddColumn("dtWeekTots","EC06","Float",0)
+F.Data.DataTable.AddColumn("dtWeekTots","EC07","Float",0)
+F.Data.DataTable.AddColumn("dtWeekTots","EC08","Float",0)
+F.Data.DataTable.AddColumn("dtWeekTots","EC09","Float",0)
+F.Data.DataTable.AddColumn("dtWeekTots","EC10","Float",0)
+F.Data.DataTable.AddColumn("dtWeekTots","OT","Float",0)
+
+F.ODBC.Connection!conts.OpenCompanyConnection
+
+F.Data.DataTable.CreateFromSQL("dtEmpl","conts","Select EMPLOYEE,NAME from EMPLOYEE_MSTR where DATE_TERMINATION = '000000' and PAY_TYPE = 'H'",True)
+
+F.Intrinsic.Control.For(V.Local.iCnt,0,V.DataTable.dtEmpl.RowCount--,1)
+
+	F.Data.DataTable.AddRow("dtWeekTots","EMPLOYEE",V.DataTable.dtEmpl(V.Local.iCnt).EMPLOYEE!FieldValTrim,"NAME",V.DataTable.dtEmpl(V.Local.iCnt).NAME!FieldValTrim,"WEEK","1")
+	'Week 1 Job Detail
+	F.Intrinsic.String.Build("Select EMPLOYEE,DEPT_EMP,CHARGE_DATE,EARNINGS_CODE,SHIFT_SHIFT,HOURS_WORKED from V_JOB_DETAIL where CHARGE_DATE between '{0}' and '{1}' and EMPL = '{2}';",V.Local.dWk1Strt.PervasiveDate,V.Local.dWk1End.PervasiveDate,V.DataTable.dtEmpl(V.Local.iCnt).EMPLOYEE!FieldValTrim,V.Local.sSQL)
+	F.Data.DataTable.CreateFromSQL("dtJbDet","conts",V.Local.sSQL,True)
+	
+	'Week 1 Time and Attendance
+	F.Intrinsic.String.Build("Select NAME as EMPLOYEE,DEPT as DEPT_EMP,CHARGE_DATE,EARNINGS_CODE,SHIFT as SHIFT_SHIFT,(OUT_TS_MIN-IN_TS_MIN)/60 as HOURS_WORKED from V_TIME_ATTENDANCE where CHARGE_DATE between '{0}' and '{1}' and V_TIME_ATTENDANCE.EMPLOYEE = '{2}' and REC_TYPE = 'A' and PAID = 'Y';",V.Local.dWk1Strt.PervasiveDate,V.Local.dWk1End.PervasiveDate,V.DataTable.dtEmpl(V.Local.iCnt).EMPLOYEE!FieldValTrim,V.Local.sSQL)
+	F.Data.DataTable.CreateFromSQL("dtTimeAtt","conts",V.Local.sSQL,True)
+	
+	F.Intrinsic.Control.If(V.DataTable.dtTimeAtt.RowCount,<>,0)
+		F.Data.DataTable.SetValue("dtTimeAtt",-1,"HOURS_WORKED",8)
+	F.Intrinsic.Control.EndIf		
+	
+	F.Data.DataTable.Clone("dtJbDet","dtTemp",True)
+	F.Data.DataTable.Merge("dtJbDet","dtTemp",True,1)
+	F.Data.DataTable.Merge("dtTimeAtt","dtTemp",True,1)
+	
+	F.Data.DataTable.Close("dtJbDet")
+	F.Data.DataTable.Close("dtTimeAtt")	
+	
+	F.Intrinsic.Control.If(V.DataTable.dtTemp.RowCount,>,0)
+		F.Intrinsic.String.Build("EMPLOYEE = '{0}'",V.DataTable.dtEmpl(V.Local.iCnt).EMPLOYEE!FieldValTrim,V.Local.sFilterOut)
+		F.Data.DataView.Create("dtWeekTots","dvWeekTots",22,V.Local.sFilterOut,"")
+		
+		F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"DEPT",V.DataTable.dtTemp(0).DEPT_EMP!FieldValTrim)
+		
+		F.Data.DataView.Create("dtTemp","dvTemp",22)
+		F.Data.DataView.ToDataTableDistinct("dtTemp","dvTemp","dtTemp1","EARNINGS_CODE")
+				
+		F.Intrinsic.Control.If(V.DataTable.dtTemp1.RowCount,>,0)
+			F.Intrinsic.Control.For(V.Local.iCnt2,0,V.DataTable.dtTemp1.RowCount--,1)
+				F.Intrinsic.String.Build("EARNINGS_CODE = '{0}'",V.DataTable.dtTemp1(V.Local.iCnt2).EARNINGS_CODE!FieldValTrim,V.Local.sFilter)
+					
+				F.Intrinsic.Control.SelectCase(V.DataTable.dtTemp1(V.Local.iCnt2).EARNINGS_CODE!FieldValTrim)
+					F.Intrinsic.Control.Case("01")
+					'Regular dayshift hours - Sum by week.  If over 40 hours, cut excess to overtime
+						F.Data.DataTable.Compute("dtTemp","Sum(HOURS_WORKED)",V.Local.sFilter,V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.If(V.Local.fSumHrsWrked,>,40)
+							F.Intrinsic.Math.Sub(V.Local.fSumHrsWrked,40,V.Local.fSumHrsWrkedOT)
+							F.Intrinsic.Math.Add(V.Local.fSumHrsWrkedOT,V.DataView.dtWeekTots!dvWeekTots(0).OT!FieldValFloat,V.Local.fSumHrsWrkedOT)
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC01","40","OT",V.Local.fSumHrsWrkedOT)
+						F.Intrinsic.Control.Else
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC01",V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.EndIf
+					F.Intrinsic.Control.Case("02")
+					'Shift Premium - Sum hours by day.  If over 10, cut excess to overtime.  Add daily to make weekly total
+						F.Data.DataView.ToDataTableDistinct("dtTemp","dvTemp","dtDaily","CHARGE_DATE")
+						F.Intrinsic.Control.For(V.Local.iDaily,0,V.DataTable.dtDaily.RowCount--,1)
+							F.Intrinsic.String.Build("CHARGE_DATE = '{0}' and EARNINGS_CODE = '{1}'",V.DataTable.dtDaily(V.Local.iDaily).CHARGE_DATE!FieldValPervasiveDate,V.DataTable.dtTemp1(V.Local.iCnt2).EARNINGS_CODE!FieldValTrim,V.Local.sFilterDaily)
+							F.Data.DataTable.Compute("dtTemp","Sum(HOURS_WORKED)",V.Local.sFilterDaily,V.Local.fSumHrsWrked)
+							F.Intrinsic.Control.If(V.Local.fSumHrsWrked,>,10)
+								F.Intrinsic.Math.Sub(V.Local.fSumHrsWrked,10,V.Local.fSumHrsWrkedOT)
+								F.Intrinsic.Math.Add(V.Local.fSumHrsWrkedOT,V.DataView.dtWeekTots!dvWeekTots(0).OT!FieldValFloat,V.Local.fSumHrsWrkedOT)
+								F.Intrinsic.Math.Add(10,V.DataView.dtWeekTots!dvWeekTots(0).EC02!FieldValFloat,V.Local.fSumHrsWrked)
+								F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC02",V.Local.fSumHrsWrked,"OT",V.Local.fSumHrsWrkedOT)
+							F.Intrinsic.Control.Else
+								F.Intrinsic.Math.Add(V.Local.fSumHrsWrked,V.DataView.dtWeekTots!dvWeekTots(0).EC02!FieldValFloat,V.Local.fSumHrsWrked)
+								F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC02",V.Local.fSumHrsWrked)
+							F.Intrinsic.Control.EndIf
+						F.Intrinsic.Control.Next(V.Local.iDaily)
+						F.Data.DataTable.Close("dtDaily")						
+					F.Intrinsic.Control.Case("03")
+					'Dayshift lead - Sum by week.  If over 40 hours, cut excess to overtime
+						F.Data.DataTable.Compute("dtTemp","Sum(HOURS_WORKED)",V.Local.sFilter,V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.If(V.Local.fSumHrsWrked,>,40)
+							F.Intrinsic.Math.Sub(V.Local.fSumHrsWrked,40,V.Local.fSumHrsWrkedOT)
+							F.Intrinsic.Math.Add(V.Local.fSumHrsWrkedOT,V.DataView.dtWeekTots!dvWeekTots(0).OT!FieldValFloat,V.Local.fSumHrsWrkedOT)
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC03","40","OT",V.Local.fSumHrsWrkedOT)
+						F.Intrinsic.Control.Else
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC03",V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.EndIf
+					F.Intrinsic.Control.Case("04")
+					'Night Shift Lead - Sum hours by day.  If over 10, cut excess to overtime.  Add daily to make weekly total
+						F.Data.DataView.ToDataTableDistinct("dtTemp","dvTemp","dtDaily","CHARGE_DATE")
+						F.Intrinsic.Control.For(V.Local.iDaily,0,V.DataTable.dtDaily.RowCount--,1)
+							F.Intrinsic.String.Build("CHARGE_DATE = '{0}' and EARNINGS_CODE = '{1}'",V.DataTable.dtDaily(V.Local.iDaily).CHARGE_DATE!FieldValPervasiveDate,V.DataTable.dtTemp1(V.Local.iCnt2).EARNINGS_CODE!FieldValTrim,V.Local.sFilterDaily)
+							F.Data.DataTable.Compute("dtTemp","Sum(HOURS_WORKED)",V.Local.sFilterDaily,V.Local.fSumHrsWrked)
+							F.Intrinsic.Control.If(V.Local.fSumHrsWrked,>,10)
+								F.Intrinsic.Math.Sub(V.Local.fSumHrsWrked,10,V.Local.fSumHrsWrkedOT)
+								F.Intrinsic.Math.Add(V.Local.fSumHrsWrkedOT,V.DataView.dtWeekTots!dvWeekTots(0).OT!FieldValFloat,V.Local.fSumHrsWrkedOT)
+								F.Intrinsic.Math.Add(10,V.DataView.dtWeekTots!dvWeekTots(0).EC04!FieldValFloat,V.Local.fSumHrsWrked)
+								F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC04",V.Local.fSumHrsWrked,"OT",V.Local.fSumHrsWrkedOT)
+							F.Intrinsic.Control.Else
+								F.Intrinsic.Math.Add(V.Local.fSumHrsWrked,V.DataView.dtWeekTots!dvWeekTots(0).EC04!FieldValFloat,V.Local.fSumHrsWrked)
+								F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC04",V.Local.fSumHrsWrked)
+							F.Intrinsic.Control.EndIf
+						F.Intrinsic.Control.Next(V.Local.iDaily)
+						F.Data.DataTable.Close("dtDaily")
+					F.Intrinsic.Control.Case("05")
+					'Vacation - Sum hours by week - Max 8 hours per day
+						F.Data.DataTable.Compute("dtTemp","Sum(HOURS_WORKED)",V.Local.sFilter,V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.If(V.Local.fSumHrsWrked,>,40)
+							F.Intrinsic.Math.Sub(V.Local.fSumHrsWrked,40,V.Local.fSumHrsWrkedOT)
+							F.Intrinsic.Math.Add(V.Local.fSumHrsWrkedOT,V.DataView.dtWeekTots!dvWeekTots(0).OT!FieldValFloat,V.Local.fSumHrsWrkedOT)
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC05","40","OT",V.Local.fSumHrsWrkedOT)
+						F.Intrinsic.Control.Else
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC05",V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.EndIf
+					F.Intrinsic.Control.Case("06")
+					'Floater - Sum hours by week
+						F.Data.DataTable.Compute("dtTemp","Sum(HOURS_WORKED)",V.Local.sFilter,V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.If(V.Local.fSumHrsWrked,>,40)
+							F.Intrinsic.Math.Sub(V.Local.fSumHrsWrked,40,V.Local.fSumHrsWrkedOT)
+							F.Intrinsic.Math.Add(V.Local.fSumHrsWrkedOT,V.DataView.dtWeekTots!dvWeekTots(0).OT!FieldValFloat,V.Local.fSumHrsWrkedOT)
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC06","40","OT",V.Local.fSumHrsWrkedOT)
+						F.Intrinsic.Control.Else
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC06",V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.EndIf
+					F.Intrinsic.Control.Case("07")
+					'Holiday - Sum by week
+						F.Data.DataTable.Compute("dtTemp","Sum(HOURS_WORKED)",V.Local.sFilter,V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.If(V.Local.fSumHrsWrked,>,40)
+							F.Intrinsic.Math.Sub(V.Local.fSumHrsWrked,40,V.Local.fSumHrsWrkedOT)
+							F.Intrinsic.Math.Add(V.Local.fSumHrsWrkedOT,V.DataView.dtWeekTots!dvWeekTots(0).OT!FieldValFloat,V.Local.fSumHrsWrkedOT)
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC07","40","OT",V.Local.fSumHrsWrkedOT)
+						F.Intrinsic.Control.Else
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC07",V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.EndIf
+					F.Intrinsic.Control.Case("08")
+					'Midnight Premium - TBD
+						
+					F.Intrinsic.Control.Case("09")
+					'Bereavement Hours - Sum by week
+						F.Data.DataTable.Compute("dtTemp","Sum(HOURS_WORKED)",V.Local.sFilter,V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.If(V.Local.fSumHrsWrked,>,40)
+							F.Intrinsic.Math.Sub(V.Local.fSumHrsWrked,40,V.Local.fSumHrsWrkedOT)
+							F.Intrinsic.Math.Add(V.Local.fSumHrsWrkedOT,V.DataView.dtWeekTots!dvWeekTots(0).OT!FieldValFloat,V.Local.fSumHrsWrkedOT)
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC09","40","OT",V.Local.fSumHrsWrkedOT)
+						F.Intrinsic.Control.Else
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC09",V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.EndIf
+					F.Intrinsic.Control.Case("10")
+					'Jury Duty - Sum by week
+						F.Data.DataTable.Compute("dtTemp","Sum(HOURS_WORKED)",V.Local.sFilter,V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.If(V.Local.fSumHrsWrked,>,40)
+							F.Intrinsic.Math.Sub(V.Local.fSumHrsWrked,40,V.Local.fSumHrsWrkedOT)
+							F.Intrinsic.Math.Add(V.Local.fSumHrsWrkedOT,V.DataView.dtWeekTots!dvWeekTots(0).OT!FieldValFloat,V.Local.fSumHrsWrkedOT)
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC10","40","OT",V.Local.fSumHrsWrkedOT)
+						F.Intrinsic.Control.Else
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC10",V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.EndIf
+				F.Intrinsic.Control.EndSelect
+			F.Intrinsic.Control.Next(V.Local.iCnt2)
+		F.Intrinsic.Control.EndIf
+		F.Data.DataView.Close("dtWeekTots","dvWeekTots")
+		F.Data.DataView.Close("dtTemp","dvTemp")
+		F.Data.DataTable.Close("dtTemp1")
+		
+	F.Intrinsic.Control.EndIf
+	
+	F.Data.DataTable.Close("dtTemp")
+	
+	V.Local.fSumHrsWrked.Set(0.00)
+	V.Local.fSumHrsWrkedOT.Set(0.00)
+	
+	'Week 2 Job Detail
+	F.Data.DataTable.AddRow("dtWeekTots","EMPLOYEE",V.DataTable.dtEmpl(V.Local.iCnt).EMPLOYEE!FieldValTrim,"NAME",V.DataTable.dtEmpl(V.Local.iCnt).NAME!FieldValTrim,"WEEK","2")
+	
+	F.Intrinsic.String.Build("Select EMPLOYEE,DEPT_EMP,CHARGE_DATE,EARNINGS_CODE,SHIFT_SHIFT,HOURS_WORKED from V_JOB_DETAIL where CHARGE_DATE between '{0}' and '{1}' and EMPL = '{2}';",V.Local.dWk2Strt.PervasiveDate,V.Local.dWk2End.PervasiveDate,V.DataTable.dtEmpl(V.Local.iCnt).EMPLOYEE!FieldValTrim,V.Local.sSQL)
+	F.Data.DataTable.CreateFromSQL("dtJbDet","conts",V.Local.sSQL,True)
+	
+	'Week 2 Time and Attendance
+	F.Intrinsic.String.Build("select NAME as EMPLOYEE,DEPT as DEPT_EMP,CHARGE_DATE,EARNINGS_CODE,SHIFT as SHIFT_SHIFT,(OUT_TS_MIN-IN_TS_MIN)/60 as HOURS_WORKED from V_TIME_ATTENDANCE where CHARGE_DATE between '{0}' and '{1}' and V_TIME_ATTENDANCE.EMPLOYEE = '{2}' and REC_TYPE = 'A' and PAID = 'Y';",V.Local.dWk2Strt.PervasiveDate,V.Local.dWk2End.PervasiveDate,V.DataTable.dtEmpl(V.Local.iCnt).EMPLOYEE!FieldValTrim,V.Local.sSQL)
+	F.Data.DataTable.CreateFromSQL("dtTimeAtt","conts",V.Local.sSQL,True)
+	
+	F.Intrinsic.Control.If(V.DataTable.dtTimeAtt.RowCount,<>,0)
+		F.Data.DataTable.SetValue("dtTimeAtt",-1,"HOURS_WORKED",8)
+	F.Intrinsic.Control.EndIf	
+	
+	F.Data.DataTable.Clone("dtJbDet","dtTemp",True)
+	F.Data.DataTable.Merge("dtJbDet","dtTemp",True,1)
+	F.Data.DataTable.Merge("dtTimeAtt","dtTemp",True,1)
+	
+	F.Data.DataTable.Close("dtJbDet")
+	F.Data.DataTable.Close("dtTimeAtt")	
+	
+	F.Intrinsic.Control.If(V.DataTable.dtTemp.RowCount,>,0)
+		F.Intrinsic.String.Build("EMPLOYEE = '{0}'",V.DataTable.dtEmpl(V.Local.iCnt).EMPLOYEE!FieldValTrim,V.Local.sFilterOut)
+		F.Data.DataView.Create("dtWeekTots","dvWeekTots",22,V.Local.sFilterOut,"")
+		
+		F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"DEPT",V.DataTable.dtTemp(0).DEPT_EMP!FieldValTrim)
+		
+		F.Data.DataView.Create("dtTemp","dvTemp",22)
+		F.Data.DataView.ToDataTableDistinct("dtTemp","dvTemp","dtTemp1","EARNINGS_CODE")
+		
+		F.Intrinsic.Control.If(V.DataTable.dtTemp1.RowCount,>,0)
+			F.Intrinsic.Control.For(V.Local.iCnt2,0,V.DataTable.dtTemp1.RowCount--,1)
+				F.Intrinsic.String.Build("EARNINGS_CODE = '{0}'",V.DataTable.dtTemp1(V.Local.iCnt2).EARNINGS_CODE!FieldValTrim,V.Local.sFilter)
+							
+				F.Intrinsic.Control.SelectCase(V.DataTable.dtTemp1(V.Local.iCnt2).EARNINGS_CODE!FieldValTrim)
+					F.Intrinsic.Control.Case("01")
+					'Regular dayshift hours - Sum by week.  If over 40 hours, cut excess to overtime
+						F.Data.DataTable.Compute("dtTemp","Sum(HOURS_WORKED)",V.Local.sFilter,V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.If(V.Local.fSumHrsWrked,>,40)
+							F.Intrinsic.Math.Sub(V.Local.fSumHrsWrked,40,V.Local.fSumHrsWrkedOT)
+							F.Intrinsic.Math.Add(V.Local.fSumHrsWrkedOT,V.DataView.dtWeekTots!dvWeekTots(1).OT!FieldValFloat,V.Local.fSumHrsWrkedOT)
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC01","40","OT",V.Local.fSumHrsWrkedOT)
+						F.Intrinsic.Control.Else
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC01",V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.EndIf
+					F.Intrinsic.Control.Case("02")
+					'Shift Premium - Sum hours by day.  If over 10, cut excess to overtime.  Add daily to make weekly total
+						F.Data.DataView.ToDataTableDistinct("dtTemp","dvTemp","dtDaily","CHARGE_DATE")
+						F.Intrinsic.Control.For(V.Local.iDaily,0,V.DataTable.dtDaily.RowCount--,1)
+							F.Intrinsic.String.Build("CHARGE_DATE = '{0}' and EARNINGS_CODE = '{1}'",V.DataTable.dtDaily(V.Local.iDaily).CHARGE_DATE!FieldValPervasiveDate,V.DataTable.dtTemp1(V.Local.iCnt2).EARNINGS_CODE!FieldValTrim,V.Local.sFilterDaily)
+							F.Data.DataTable.Compute("dtTemp","Sum(HOURS_WORKED)",V.Local.sFilterDaily,V.Local.fSumHrsWrked)
+							F.Intrinsic.Control.If(V.Local.fSumHrsWrked,>,10)
+								F.Intrinsic.Math.Sub(V.Local.fSumHrsWrked,10,V.Local.fSumHrsWrkedOT)
+								F.Intrinsic.Math.Add(V.Local.fSumHrsWrkedOT,V.DataView.dtWeekTots!dvWeekTots(1).OT!FieldValFloat,V.Local.fSumHrsWrkedOT)
+								F.Intrinsic.Math.Add(10,V.DataView.dtWeekTots!dvWeekTots(1).EC02!FieldValFloat,V.Local.fSumHrsWrked)
+								F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC02",V.Local.fSumHrsWrked,"OT",V.Local.fSumHrsWrkedOT)
+							F.Intrinsic.Control.Else
+								F.Intrinsic.Math.Add(V.Local.fSumHrsWrked,V.DataView.dtWeekTots!dvWeekTots(1).EC02!FieldValFloat,V.Local.fSumHrsWrked)
+								F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC02",V.Local.fSumHrsWrked)
+							F.Intrinsic.Control.EndIf
+						F.Intrinsic.Control.Next(V.Local.iDaily)
+						F.Data.DataTable.Close("dtDaily")						
+					F.Intrinsic.Control.Case("03")
+					'Dayshift lead - Sum by week.  If over 40 hours, cut excess to overtime
+						F.Data.DataTable.Compute("dtTemp","Sum(HOURS_WORKED)",V.Local.sFilter,V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.If(V.Local.fSumHrsWrked,>,40)
+							F.Intrinsic.Math.Sub(V.Local.fSumHrsWrked,40,V.Local.fSumHrsWrkedOT)
+							F.Intrinsic.Math.Add(V.Local.fSumHrsWrkedOT,V.DataView.dtWeekTots!dvWeekTots(1).OT!FieldValFloat,V.Local.fSumHrsWrkedOT)
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC03","40","OT",V.Local.fSumHrsWrkedOT)
+						F.Intrinsic.Control.Else
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC03",V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.EndIf
+					F.Intrinsic.Control.Case("04")
+					'Night Shift Lead - Sum hours by day.  If over 10, cut excess to overtime.  Add daily to make weekly total
+						F.Data.DataView.ToDataTableDistinct("dtTemp","dvTemp","dtDaily","CHARGE_DATE")
+						F.Intrinsic.Control.For(V.Local.iDaily,0,V.DataTable.dtDaily.RowCount--,1)
+							F.Intrinsic.String.Build("CHARGE_DATE = '{0}' and EARNINGS_CODE = '{1}'",V.DataTable.dtDaily(V.Local.iDaily).CHARGE_DATE!FieldValPervasiveDate,V.DataTable.dtTemp1(V.Local.iCnt2).EARNINGS_CODE!FieldValTrim,V.Local.sFilterDaily)
+							F.Data.DataTable.Compute("dtTemp","Sum(HOURS_WORKED)",V.Local.sFilterDaily,V.Local.fSumHrsWrked)
+							F.Intrinsic.Control.If(V.Local.fSumHrsWrked,>,10)
+								F.Intrinsic.Math.Sub(V.Local.fSumHrsWrked,10,V.Local.fSumHrsWrkedOT)
+								F.Intrinsic.Math.Add(V.Local.fSumHrsWrkedOT,V.DataView.dtWeekTots!dvWeekTots(1).OT!FieldValFloat,V.Local.fSumHrsWrkedOT)
+								F.Intrinsic.Math.Add(10,V.DataView.dtWeekTots!dvWeekTots(1).EC04!FieldValFloat,V.Local.fSumHrsWrked)
+								F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC04",V.Local.fSumHrsWrked,"OT",V.Local.fSumHrsWrkedOT)
+							F.Intrinsic.Control.Else
+								F.Intrinsic.Math.Add(V.Local.fSumHrsWrked,V.DataView.dtWeekTots!dvWeekTots(1).EC04!FieldValFloat,V.Local.fSumHrsWrked)
+								F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC04",V.Local.fSumHrsWrked)
+							F.Intrinsic.Control.EndIf
+						F.Intrinsic.Control.Next(V.Local.iDaily)
+						F.Data.DataTable.Close("dtDaily")
+					F.Intrinsic.Control.Case("05")
+					'Vacation - Sum hours by week
+						F.Data.DataTable.Compute("dtTemp","Sum(HOURS_WORKED)",V.Local.sFilter,V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.If(V.Local.fSumHrsWrked,>,40)
+							F.Intrinsic.Math.Sub(V.Local.fSumHrsWrked,40,V.Local.fSumHrsWrkedOT)
+							F.Intrinsic.Math.Add(V.Local.fSumHrsWrkedOT,V.DataView.dtWeekTots!dvWeekTots(1).OT!FieldValFloat,V.Local.fSumHrsWrkedOT)
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC05","40","OT",V.Local.fSumHrsWrkedOT)
+						F.Intrinsic.Control.Else
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC05",V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.EndIf
+					F.Intrinsic.Control.Case("06")
+					'Floater - Sum hours by week
+						F.Data.DataTable.Compute("dtTemp","Sum(HOURS_WORKED)",V.Local.sFilter,V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.If(V.Local.fSumHrsWrked,>,40)
+							F.Intrinsic.Math.Sub(V.Local.fSumHrsWrked,40,V.Local.fSumHrsWrkedOT)
+							F.Intrinsic.Math.Add(V.Local.fSumHrsWrkedOT,V.DataView.dtWeekTots!dvWeekTots(1).OT!FieldValFloat,V.Local.fSumHrsWrkedOT)
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC06","40","OT",V.Local.fSumHrsWrkedOT)
+						F.Intrinsic.Control.Else
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC06",V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.EndIf
+					F.Intrinsic.Control.Case("07")
+					'Holiday - Sum by week
+						F.Data.DataTable.Compute("dtTemp","Sum(HOURS_WORKED)",V.Local.sFilter,V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.If(V.Local.fSumHrsWrked,>,40)
+							F.Intrinsic.Math.Sub(V.Local.fSumHrsWrked,40,V.Local.fSumHrsWrkedOT)
+							F.Intrinsic.Math.Add(V.Local.fSumHrsWrkedOT,V.DataView.dtWeekTots!dvWeekTots(1).OT!FieldValFloat,V.Local.fSumHrsWrkedOT)
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC07","40","OT",V.Local.fSumHrsWrkedOT)
+						F.Intrinsic.Control.Else
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC07",V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.EndIf
+					F.Intrinsic.Control.Case("08")
+					'Midnight Premium - TBD
+						
+					F.Intrinsic.Control.Case("09")
+					'Bereavement Hours - Sum by week
+						F.Data.DataTable.Compute("dtTemp","Sum(HOURS_WORKED)",V.Local.sFilter,V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.If(V.Local.fSumHrsWrked,>,40)
+							F.Intrinsic.Math.Sub(V.Local.fSumHrsWrked,40,V.Local.fSumHrsWrkedOT)
+							F.Intrinsic.Math.Add(V.Local.fSumHrsWrkedOT,V.DataView.dtWeekTots!dvWeekTots(1).OT!FieldValFloat,V.Local.fSumHrsWrkedOT)
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC09","40","OT",V.Local.fSumHrsWrkedOT)
+						F.Intrinsic.Control.Else
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC09",V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.EndIf
+					F.Intrinsic.Control.Case("10")
+					'Jury Duty - Sum by week
+						F.Data.DataTable.Compute("dtTemp","Sum(HOURS_WORKED)",V.Local.sFilter,V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.If(V.Local.fSumHrsWrked,>,40)
+							F.Intrinsic.Math.Sub(V.Local.fSumHrsWrked,40,V.Local.fSumHrsWrkedOT)
+							F.Intrinsic.Math.Add(V.Local.fSumHrsWrkedOT,V.DataView.dtWeekTots!dvWeekTots(1).OT!FieldValFloat,V.Local.fSumHrsWrkedOT)
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC10","40","OT",V.Local.fSumHrsWrkedOT)
+						F.Intrinsic.Control.Else
+							F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC10",V.Local.fSumHrsWrked)
+						F.Intrinsic.Control.EndIf
+				F.Intrinsic.Control.EndSelect
+			F.Intrinsic.Control.Next(V.Local.iCnt2)
+		F.Intrinsic.Control.EndIf
+		F.Data.DataView.Close("dtWeekTots","dvWeekTots")
+		F.Data.DataView.Close("dtTemp","dvTemp")
+		F.Data.DataTable.Close("dtTemp1")
+		
+	F.Intrinsic.Control.EndIf
+	
+	F.Data.DataTable.Close("dtTemp")
+	
+F.Intrinsic.Control.Next(V.Local.iCnt)
+
+F.ODBC.Connection!conts.Close
+
+Gui.fmMain.lblMsg.Caption("Please wait - calculating final output")
+
+F.Intrinsic.Control.CallSub("GenCSVData")
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.CallSub(Error,"SubRoutine",V.Ambient.CurrentSubroutine,"eNumber",V.Ambient.ErrorNumber,"eDESCRiption",V.Ambient.ErrorDESCRiption)
+F.Intrinsic.Control.EndTry
+Program.Sub.Data.End
+
+Program.Sub.GenCSVData.Start
+F.Intrinsic.Control.Try
+V.Local.iCnt.Declare
+V.Local.sFilter.Declare
+V.Local.fSum01.Declare
+V.Local.fSum02.Declare
+V.Local.fSum03.Declare
+V.Local.fSum04.Declare
+V.Local.fSum05.Declare
+V.Local.fSum06.Declare
+V.Local.fSum07.Declare
+V.Local.fSum08.Declare
+V.Local.fSum09.Declare
+V.Local.fSum10.Declare
+V.Local.fSumOT.Declare
+V.Local.fSumTOT.Declare
+V.Local.fOTSkim.Declare
+V.Local.fStatPay.Declare
+V.Local.sCSVClean.Declare
+'VT - 9 Mar
+V.Local.fEC01.Declare
+V.Local.fEC02.Declare
+V.Local.fEC03.Declare
+V.Local.fEC04.Declare
+
+F.Intrinsic.Control.If(V.DataTable.dtOutput.Exists)
+	F.Data.DataTable.Close("dtOutput")
+F.Intrinsic.Control.EndIf
+
+F.Data.DataTable.Create("dtOutput",True)
+F.Data.DataTable.AddColumn("dtOutput","NUMBER","String")
+F.Data.DataTable.AddColumn("dtOutput","NAME","String")
+F.Data.DataTable.AddColumn("dtOutput","DEPARTMENT","String")
+F.Data.DataTable.AddColumn("dtOutput","RATE","String")
+F.Data.DataTable.AddColumn("dtOutput","REG_HRS","String")
+F.Data.DataTable.AddColumn("dtOutput","OT_HRS","String")
+F.Data.DataTable.AddColumn("dtOutput","SHIFT_PREM","String")
+F.Data.DataTable.AddColumn("dtOutput","STAT_PAY","String")
+F.Data.DataTable.AddColumn("dtOutput","LEAD","String")
+F.Data.DataTable.AddColumn("dtOutput","BEREAVE_HRS","String")
+F.Data.DataTable.AddColumn("dtOutput","FLOATER","String")
+F.Data.DataTable.AddColumn("dtOutput","MIDNIGHT_PREM","String")
+F.Data.DataTable.AddColumn("dtOutput","FOREMAN_LEAD","String")
+F.Data.DataTable.AddColumn("dtOutput","MESSAGE","String")
+
+F.Data.DataTable.AddExpressionColumn("dtWeekTots","TOTAL","Float","EC01+EC02+EC03+EC04+EC05+EC06+EC07+EC08+EC09+EC10")
+
+F.Data.DataView.Create("dtWeekTots","dvWeekTots",22)
+F.Data.DataView.ToDataTableDistinct("dtWeekTots","dvWeekTots","dtOutLoop","EMPLOYEE")
+
+F.Intrinsic.Control.For(V.Local.iCnt,0,V.DataTable.dtOutLoop.RowCount--,1)
+
+	F.Intrinsic.String.Build("EMPLOYEE = '{0}'",V.DataTable.dtOutLoop(V.Local.iCnt).EMPLOYEE!FieldValTrim,V.Local.sFilter)
+	F.Data.DataView.SetFilter("dtWeekTots","dvWeekTots",V.Local.sFilter)
+	
+	'VT 9 Mar - Any nightshift premiums need to be added to EC01 and remain in their respective categories as well.
+	'Week 1
+	V.Local.fEC01.Set(V.DataView.dtWeekTots!dvWeekTots(0).EC01!FieldValFloat)
+	V.Local.fEC02.Set(V.DataView.dtWeekTots!dvWeekTots(0).EC02!FieldValFloat)
+	V.Local.fEC03.Set(V.DataView.dtWeekTots!dvWeekTots(0).EC03!FieldValFloat)
+	V.Local.fEC04.Set(V.DataView.dtWeekTots!dvWeekTots(0).EC04!FieldValFloat)
+	
+	F.Intrinsic.Math.Add(V.Local.fEC01,V.Local.fEC02,V.Local.fEC03,V.Local.fEC04,V.Local.fEC01)
+	
+	F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC01",V.Local.fEC01)
+	
+	'Night lead also gets shift premium
+	F.Intrinsic.Math.Add(V.Local.fEC02,V.Local.fEC04,V.Local.fEC02)
+	
+	F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",0,"EC02",V.Local.fEC02)
+	
+	'Week 2
+	V.Local.fEC01.Set(V.DataView.dtWeekTots!dvWeekTots(1).EC01!FieldValFloat)
+	V.Local.fEC02.Set(V.DataView.dtWeekTots!dvWeekTots(1).EC02!FieldValFloat)
+	V.Local.fEC03.Set(V.DataView.dtWeekTots!dvWeekTots(1).EC03!FieldValFloat)
+	V.Local.fEC04.Set(V.DataView.dtWeekTots!dvWeekTots(1).EC04!FieldValFloat)
+	
+	F.Intrinsic.Math.Add(V.Local.fEC01,V.Local.fEC02,V.Local.fEC03,V.Local.fEC04,V.Local.fEC01)
+	
+	F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC01",V.Local.fEC01)
+	
+	'Night lead also gets shift premium
+	F.Intrinsic.Math.Add(V.Local.fEC02,V.Local.fEC04,V.Local.fEC02)
+	
+	F.Data.DataView.SetValue("dtWeekTots","dvWeekTots",1,"EC02",V.Local.fEC02)	
+	
+	'/VT 9 Mar
+	
+	F.Data.DataTable.Compute("dtWeekTots","Sum([EC01])",V.Local.sFilter,V.Local.fSum01)
+	F.Data.DataTable.Compute("dtWeekTots","Sum([EC02])",V.Local.sFilter,V.Local.fSum02)
+	F.Data.DataTable.Compute("dtWeekTots","Sum([EC03])",V.Local.sFilter,V.Local.fSum03)
+	F.Data.DataTable.Compute("dtWeekTots","Sum([EC04])",V.Local.sFilter,V.Local.fSum04)
+	F.Data.DataTable.Compute("dtWeekTots","Sum([EC05])",V.Local.sFilter,V.Local.fSum05)
+	F.Data.DataTable.Compute("dtWeekTots","Sum([EC06])",V.Local.sFilter,V.Local.fSum06)
+	F.Data.DataTable.Compute("dtWeekTots","Sum([EC07])",V.Local.sFilter,V.Local.fSum07)
+	F.Data.DataTable.Compute("dtWeekTots","Sum([EC08])",V.Local.sFilter,V.Local.fSum08)
+	F.Data.DataTable.Compute("dtWeekTots","Sum([EC09])",V.Local.sFilter,V.Local.fSum09)
+	F.Data.DataTable.Compute("dtWeekTots","Sum([EC10])",V.Local.sFilter,V.Local.fSum10)
+	F.Data.DataTable.Compute("dtWeekTots","Sum([OT])",V.Local.sFilter,V.Local.fSumOT)
+	F.Data.DataTable.Compute("dtWeekTots","Sum([TOTAL])",V.Local.sFilter,V.Local.fSumTOT)
+	
+	V.Local.fOTSkim.Set(0.00)
+	
+	'All absentee codes are added to regular time for overtime calculation
+	F.Intrinsic.Math.Add(V.Local.fSum01,V.Local.fSum05,V.Local.fSum06,V.Local.fSum07,V.Local.fSum09,V.Local.fSum10,V.Local.fSum01)
+	
+	F.Intrinsic.Control.If(V.Local.fSum01,>,80)
+		F.Intrinsic.Math.Sub(V.Local.fSum01,80,V.Local.fOTSkim)
+		F.Intrinsic.Math.Round(V.Local.fOTSkim,4,V.Local.fOTSkim)
+		
+		V.Local.fSum01.Set(80)
+		F.Intrinsic.Math.Add(V.Local.fOTSkim,V.Local.fSumOT,V.Local.fSumOT)
+	F.Intrinsic.Control.EndIf
+	
+	'The absentee code totals are then removed from the regular hours after overtime calculation
+	F.Intrinsic.Math.Sub(V.Local.fSum01,V.Local.fSum05,V.Local.fSum06,V.Local.fSum07,V.Local.fSum09,V.Local.fSum10,V.Local.fSum01)
+	
+	F.Intrinsic.Math.Add(V.Local.fSum05,V.Local.fSum07,V.Local.fStatPay)
+	
+	F.Intrinsic.Math.Round(V.Local.fSum01,1,V.Local.fSum01)
+	F.Intrinsic.Math.Round(V.Local.fSum02,1,V.Local.fSum02)
+	F.Intrinsic.Math.Round(V.Local.fSum03,1,V.Local.fSum03)
+	F.Intrinsic.Math.Round(V.Local.fSum04,1,V.Local.fSum04)
+	F.Intrinsic.Math.Round(V.Local.fSum05,1,V.Local.fSum05)
+	F.Intrinsic.Math.Round(V.Local.fSum06,1,V.Local.fSum06)
+	
+	F.Intrinsic.Math.Round(V.Local.fSum08,1,V.Local.fSum08)
+	F.Intrinsic.Math.Round(V.Local.fStatPay,1,V.Local.fStatPay)
+	F.Intrinsic.Math.Round(V.Local.fSumOT,1,V.Local.fSumOT)
+	
+	F.Data.DataTable.AddRow("dtOutput","NUMBER",V.DataView.dtWeekTots!dvWeekTots(0).EMPLOYEE!FieldValTrim,"NAME",V.DataView.dtWeekTots!dvWeekTots(0).NAME!FieldValTrim,"DEPARTMENT",V.DataView.dtWeekTots!dvWeekTots(0).DEPT!FieldValTrim,"RATE","","REG_HRS",V.Local.fSum01,"OT_HRS",V.Local.fSumOT,"SHIFT_PREM",V.Local.fSum02,"STAT_PAY",V.Local.fStatPay,"LEAD",V.Local.fSum03,"BEREAVE_HRS",V.Local.fSum09,"FLOATER",V.Local.fSum06,"MIDNIGHT_PREM",V.Local.fsum08,"FOREMAN_LEAD",V.Local.fSum04,"MESSAGE","")
+	
+F.Intrinsic.Control.Next(V.Local.iCnt)
+
+Gui.fmMain.lblMsg.Caption("Please wait - generating CSV file.")
+
+F.Intrinsic.Control.CallSub("OutputCSV")
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.CallSub(Error,"SubRoutine",V.Ambient.CurrentSubroutine,"eNumber",V.Ambient.ErrorNumber,"eDescription",V.Ambient.ErrorDescription)
+F.Intrinsic.Control.EndTry
+Program.Sub.GenCSVData.End
+
+Program.Sub.OutputCSV.Start
+F.Intrinsic.Control.Try
+V.Local.sPath.Declare
+V.Local.sSQL.Declare
+
+F.Intrinsic.UI.ShowSaveFileDialog("","csv|*.csv",V.Local.sPath)
+
+F.Intrinsic.Control.If(V.Local.sPath,=,"***CANCEL***")
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.String.Split(V.Local.sPath,".",V.Local.sPath)
+
+F.Intrinsic.String.Build("{0}.csv",V.Local.sPath(0),V.Local.sPath)
+
+F.Data.Datatable.SaveToCSV("dtOutput",V.Local.sPath.Trim,True)
+
+F.Intrinsic.String.Build("File saved to {0}",V.Local.sPath.Trim,V.Local.sSQL)
+
+F.Intrinsic.UI.Msgbox(V.Local.sSQL,"Success!")
+
+F.Intrinsic.Control.CallSub("fmMain_Unload")
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.CallSub(Error,"SubRoutine",V.Ambient.CurrentSubroutine,"eNumber",V.Ambient.ErrorNumber,"eDescription",V.Ambient.ErrorDescription)
+F.Intrinsic.Control.EndTry
+Program.Sub.OutputCSV.End
+
+Program.Sub.fmMain_UnLoad.Start
+F.Intrinsic.Control.End
+Program.Sub.fmMain_UnLoad.End
+
+Program.Sub.Error.Start
+V.Local.sError.Declare
+V.Local.iRet.Declare
+V.Local.sSep.Declare
+
+F.Intrinsic.String.Build("-------------------------------------------------------------------------------------",,V.Local.sSep)
+F.Intrinsic.String.Build("({5}-{6}){0}{7}{0}Project: {4}{0}{7}{0}Sub: {1}{0}Error: {2}, {3}", V.Ambient.NewLine, V.Args.SubRoutine, V.Args.eNumber, V.Args.eDESCRiption,V.Caller.ScriptFile,V.Ambient.Date, V.Ambient.Time,V.Local.sSep,V.Local.sError)
+F.Intrinsic.UI.Msgbox(V.Local.sError,"Error",V.Local.iRet)
+Program.Sub.Error.End
+
+Program.Sub.Comments.Start
+${$5$}$2.0.0.0$}$2
+${$6$}$tsmith$}$20210311111643025$}$xqPbj9atw05FglvzeFsZ9cqXP+qvG6tX88A9bphf8Y7qziqEqfBNBy/RnMb+9YRX3iBDLGikkzQ=
+Program.Sub.Comments.End
